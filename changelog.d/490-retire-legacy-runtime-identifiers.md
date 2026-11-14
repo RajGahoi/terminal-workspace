@@ -1,0 +1,1 @@
+- [CHORE] Add TERM_WORKSPACE_* runtime aliases and freeze on-disk keychain and database compatibility identifiers (#490)

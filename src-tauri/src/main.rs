@@ -57,6 +57,8 @@ const UPDATE_INSTALL_PROGRESS_EVENT_NAME: &str = "terminal_workspace://update-in
 /// which is smooth for a progress bar without making work scale with chunk rate.
 /// The completed download bypasses this interval so the final state is never lost.
 const UPDATE_DOWNLOAD_PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(100);
+// DO NOT RENAME — compatibility identity. These keychain service strings are the
+// on-disk identity of existing installs and must not be changed. (Issue #490 / MAINT-11)
 const KEYCHAIN_PASSWORD_SERVICE: &str = "com.termsnip.runtime.password";
 /// Per-host passphrase entry. Retained for backward compatibility (older
 /// builds wrote here) and as the migration source. New writes go to
@@ -392,6 +394,8 @@ const NATIVE_SSH_CONTROL_READY_TIMEOUT_MS: u64 = 15_000;
 const NATIVE_SSH_CONNECT_TIMEOUT_MS: u64 = 15_000;
 const NATIVE_SSH_IO_TIMEOUT_MS: u32 = 30_000;
 const TERMINAL_WORKSPACE_DATABASE_URL: &str = "sqlite:terminalworkspace.db";
+// DO NOT RENAME — compatibility identity. Preserves backward compatibility
+// as an automatic migration source from legacy database installs. (Issue #490 / MAINT-11)
 const LEGACY_DATABASE_URL: &str = "sqlite:termsnip.db";
 static SESSION_STREAM_COUNTER: AtomicU64 = AtomicU64::new(1);
 static NATIVE_SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -646,11 +650,28 @@ fn resolve_command_path(candidates: &[&str]) -> Option<PathBuf> {
     None
 }
 
-fn resolve_command_path_with_override(
-    override_env: Option<&str>,
+const TELNET_PATH_OVERRIDE_ENVS: &[&str] = &[
+    "TERM_WORKSPACE_TELNET_PATH",
+    "TERMSNIP_TELNET_PATH",
+];
+const SCREEN_PATH_OVERRIDE_ENVS: &[&str] = &[
+    "TERM_WORKSPACE_SCREEN_PATH",
+    "TERMSNIP_SCREEN_PATH",
+];
+const CU_PATH_OVERRIDE_ENVS: &[&str] = &[
+    "TERM_WORKSPACE_CU_PATH",
+    "TERMSNIP_CU_PATH",
+];
+const MOSH_PATH_OVERRIDE_ENVS: &[&str] = &[
+    "TERM_WORKSPACE_MOSH_PATH",
+    "TERMSNIP_MOSH_PATH",
+];
+
+fn resolve_command_path_with_overrides(
+    override_envs: &[&str],
     candidates: &[&str],
 ) -> Option<PathBuf> {
-    if let Some(override_env) = override_env {
+    for override_env in override_envs {
         if let Some(path) = env::var_os(override_env) {
             let candidate = PathBuf::from(path);
             if candidate.is_file() {
@@ -660,6 +681,17 @@ fn resolve_command_path_with_override(
     }
 
     resolve_command_path(candidates)
+}
+
+fn resolve_command_path_with_override(
+    override_env: Option<&str>,
+    candidates: &[&str],
+) -> Option<PathBuf> {
+    if let Some(override_env) = override_env {
+        resolve_command_path_with_overrides(&[override_env], candidates)
+    } else {
+        resolve_command_path(candidates)
+    }
 }
 
 fn shell_quote(value: &str) -> String {
@@ -720,8 +752,8 @@ fn build_protocol_runtime_status(protocol: &str) -> ProtocolRuntimeStatusRespons
                 None,
             )
         }
-        "telnet" => match resolve_command_path_with_override(
-            Some("TERMSNIP_TELNET_PATH"),
+        "telnet" => match resolve_command_path_with_overrides(
+            TELNET_PATH_OVERRIDE_ENVS,
             &["/usr/bin/telnet", "telnet"],
         ) {
             Some(path) => protocol_runtime_response(
@@ -745,8 +777,8 @@ fn build_protocol_runtime_status(protocol: &str) -> ProtocolRuntimeStatusRespons
             ),
         },
         "serial" => {
-            if let Some(path) = resolve_command_path_with_override(
-                Some("TERMSNIP_SCREEN_PATH"),
+            if let Some(path) = resolve_command_path_with_overrides(
+                SCREEN_PATH_OVERRIDE_ENVS,
                 &["/usr/bin/screen", "screen"],
             ) {
                 protocol_runtime_response(
@@ -758,7 +790,7 @@ fn build_protocol_runtime_status(protocol: &str) -> ProtocolRuntimeStatusRespons
                     None,
                 )
             } else if let Some(path) =
-                resolve_command_path_with_override(Some("TERMSNIP_CU_PATH"), &["/usr/bin/cu", "cu"])
+                resolve_command_path_with_overrides(CU_PATH_OVERRIDE_ENVS, &["/usr/bin/cu", "cu"])
             {
                 protocol_runtime_response(
                     protocol,
@@ -782,8 +814,8 @@ fn build_protocol_runtime_status(protocol: &str) -> ProtocolRuntimeStatusRespons
                 )
             }
         }
-        "mosh" => match resolve_command_path_with_override(
-            Some("TERMSNIP_MOSH_PATH"),
+        "mosh" => match resolve_command_path_with_overrides(
+            MOSH_PATH_OVERRIDE_ENVS,
             &[
                 "/opt/homebrew/bin/mosh",
                 "/usr/local/bin/mosh",
@@ -987,8 +1019,8 @@ fn build_external_command_session_spec(
             })
         }
         "telnet" => {
-            let executable = resolve_command_path_with_override(
-                Some("TERMSNIP_TELNET_PATH"),
+            let executable = resolve_command_path_with_overrides(
+                TELNET_PATH_OVERRIDE_ENVS,
                 &["/usr/bin/telnet", "telnet"],
             )
             .ok_or_else(|| "Telnet client is not installed on this workstation".to_string())?;
@@ -1004,8 +1036,8 @@ fn build_external_command_session_spec(
             })
         }
         "serial" => {
-            let command = if let Some(executable) = resolve_command_path_with_override(
-                Some("TERMSNIP_SCREEN_PATH"),
+            let command = if let Some(executable) = resolve_command_path_with_overrides(
+                SCREEN_PATH_OVERRIDE_ENVS,
                 &["/usr/bin/screen", "screen"],
             ) {
                 let mut command = CommandBuilder::new(executable);
@@ -1017,7 +1049,7 @@ fn build_external_command_session_spec(
                 command.arg(host.port.to_string());
                 command
             } else if let Some(executable) =
-                resolve_command_path_with_override(Some("TERMSNIP_CU_PATH"), &["/usr/bin/cu", "cu"])
+                resolve_command_path_with_overrides(CU_PATH_OVERRIDE_ENVS, &["/usr/bin/cu", "cu"])
             {
                 let mut command = CommandBuilder::new(executable);
                 command.arg("-l");
@@ -1039,8 +1071,8 @@ fn build_external_command_session_spec(
             })
         }
         "mosh" => {
-            let executable = resolve_command_path_with_override(
-                Some("TERMSNIP_MOSH_PATH"),
+            let executable = resolve_command_path_with_overrides(
+                MOSH_PATH_OVERRIDE_ENVS,
                 &[
                     "/opt/homebrew/bin/mosh",
                     "/usr/local/bin/mosh",
@@ -7351,11 +7383,13 @@ lrwxr-xr-x    1 ops ops  11 Mar 31 12:00 current -> releases
 
     #[test]
     fn public_known_host_scan_smoke() {
-        let Ok(hostname) = env::var("TERMSNIP_PUBLIC_SCAN_HOST") else {
-            log::warn!("Skipping public known-host scan smoke; TERMSNIP_PUBLIC_SCAN_HOST is unset");
+        let Ok(hostname) = env::var("TERM_WORKSPACE_PUBLIC_SCAN_HOST")
+            .or_else(|_| env::var("TERMSNIP_PUBLIC_SCAN_HOST")) else {
+            log::warn!("Skipping public known-host scan smoke; TERM_WORKSPACE_PUBLIC_SCAN_HOST / TERMSNIP_PUBLIC_SCAN_HOST is unset");
             return;
         };
-        let port = env::var("TERMSNIP_PUBLIC_SCAN_PORT")
+        let port = env::var("TERM_WORKSPACE_PUBLIC_SCAN_PORT")
+            .or_else(|_| env::var("TERMSNIP_PUBLIC_SCAN_PORT"))
             .ok()
             .and_then(|value| value.parse::<u16>().ok())
             .unwrap_or(22);

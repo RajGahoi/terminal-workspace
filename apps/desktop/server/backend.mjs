@@ -78,12 +78,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = normalize(join(__dirname, ".."));
 const distRoot = join(appRoot, "dist");
 const serveStatic = createStaticHandler({ root: distRoot });
-const port = Number.parseInt(process.env.TERMSNIP_BACKEND_PORT ?? "8790", 10);
+const port = Number.parseInt(
+  process.env.TERM_WORKSPACE_BACKEND_PORT ?? process.env.TERMSNIP_BACKEND_PORT ?? "8790",
+  10
+);
 
-// Per-launch auth gate. The token comes from TERMSNIP_BACKEND_TOKEN or is
-// generated fresh, and is also written to a 0600 file in a private app data
-// directory for manual use (#474). Browser callers are authenticated by a
-// matching Origin header. See parity-and-hardening-review §3.S-4 / §3.S-8.
+// Per-launch auth gate. The token comes from TERM_WORKSPACE_BACKEND_TOKEN /
+// TERMSNIP_BACKEND_TOKEN or is generated fresh, and is also written to a 0600
+// file in a private app data directory for manual use (#474). Browser callers
+// are authenticated by a matching Origin header. See parity-and-hardening-review §3.S-4 / §3.S-8.
 let backendAuth;
 try {
   backendAuth = loadOrCreateBackendToken({
@@ -91,14 +94,16 @@ try {
     stateDir: resolveAppDataDirectory(process.env),
   });
 } catch (error) {
-  console.error(`[termsnip] backend not started: ${error.message}`);
+  console.error(`[terminal-workspace] backend not started: ${error.message}`);
   process.exit(1);
 }
-const allowedOrigins = parseAllowedOrigins(process.env.TERMSNIP_ALLOWED_ORIGINS);
-console.error(
-  `[termsnip] backend auth gate: token source=${backendAuth.source}`
+const allowedOrigins = parseAllowedOrigins(
+  process.env.TERM_WORKSPACE_ALLOWED_ORIGINS ?? process.env.TERMSNIP_ALLOWED_ORIGINS
 );
-console.error(`[termsnip] backend allowed origins: ${allowedOrigins.join(", ")}`);
+console.error(
+  `[terminal-workspace] backend auth gate: token source=${backendAuth.source}`
+);
+console.error(`[terminal-workspace] backend allowed origins: ${allowedOrigins.join(", ")}`);
 
 function denyUnauthorized(response, decision) {
   response.writeHead(403, { "content-type": "application/json; charset=utf-8" });

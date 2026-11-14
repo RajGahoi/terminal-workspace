@@ -53,12 +53,13 @@ export function isSupportedAuthMethod(authMethod) {
  * browser client carries no per-launch token. So the authorisation has to come
  * from the operator who started the backend, not from the request.
  *
- * Off unless `TERMSNIP_ALLOW_AGENT_FORWARDING=1` is set in the backend's
- * environment. The native (shipping) transport is a separate surface with a
- * different threat model and is not affected.
+ * Off unless `TERM_WORKSPACE_ALLOW_AGENT_FORWARDING=1` (or legacy
+ * `TERMSNIP_ALLOW_AGENT_FORWARDING=1`) is set in the backend's environment. The
+ * native (shipping) transport is a separate surface with a different threat
+ * model and is not affected.
  */
 export function agentForwardingAllowed(env = process.env) {
-  return env?.TERMSNIP_ALLOW_AGENT_FORWARDING === "1";
+  return (env?.TERM_WORKSPACE_ALLOW_AGENT_FORWARDING ?? env?.TERMSNIP_ALLOW_AGENT_FORWARDING) === "1";
 }
 
 /**

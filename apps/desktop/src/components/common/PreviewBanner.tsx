@@ -12,7 +12,7 @@ const ALERT_CLASS =
 const FAILURE_MESSAGES: Record<BackendProbeFailureKind, string> = {
   unreachable: "Backend server unreachable — verify that the preview backend is running.",
   unauthorized:
-    "Backend refused this page — check that this page's origin is allowed (TERMSNIP_ALLOWED_ORIGINS).",
+    "Backend refused this page — check that this page's origin is allowed (TERM_WORKSPACE_ALLOWED_ORIGINS / TERMSNIP_ALLOWED_ORIGINS).",
   error: "Backend returned an unexpected error — check the preview backend's output.",
 };
 

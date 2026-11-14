@@ -194,11 +194,11 @@ export function hostKeyAlgorithmName(keyBlob) {
  * itself: the two modes then share one trust store rather than drifting into
  * two.
  *
- * `TERMSNIP_STATE_DIR` overrides it, which is what the tests use so they
- * never touch the developer's real store.
+ * `TERM_WORKSPACE_STATE_DIR` (or legacy `TERMSNIP_STATE_DIR`) overrides it,
+ * which is what the tests use so they never touch the developer's real store.
  */
 export function resolveAppDataDirectory(env = process.env) {
-  const override = String(env.TERMSNIP_STATE_DIR ?? "").trim();
+  const override = String(env.TERM_WORKSPACE_STATE_DIR ?? env.TERMSNIP_STATE_DIR ?? "").trim();
   if (override) {
     return override;
   }

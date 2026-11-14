@@ -37,6 +37,7 @@ export const DEFAULT_ALLOWED_ORIGINS = Object.freeze([
 
 /** Header keys we accept the per-launch token under, lowercased. */
 const TOKEN_HEADER_NAMES = Object.freeze([
+  "x-terminal-workspace-token",
   "x-termsnip-token",
   "authorization", // "Bearer <token>"
 ]);
@@ -178,7 +179,7 @@ export function isRequestAuthorized({ headers, allowedOrigins, expectedToken }) 
  * throws when the file cannot be created exclusively.
  */
 export function loadOrCreateBackendToken({ env, stateDir }) {
-  const fromEnv = env?.TERMSNIP_BACKEND_TOKEN?.trim();
+  const fromEnv = (env?.TERM_WORKSPACE_BACKEND_TOKEN ?? env?.TERMSNIP_BACKEND_TOKEN)?.trim();
   if (fromEnv && fromEnv.length >= MIN_TOKEN_LENGTH) {
     return { token: fromEnv, source: "env", publish: () => null };
   }
