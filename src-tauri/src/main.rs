@@ -671,17 +671,6 @@ fn resolve_command_path_with_overrides(
     resolve_command_path(candidates)
 }
 
-fn resolve_command_path_with_override(
-    override_env: Option<&str>,
-    candidates: &[&str],
-) -> Option<PathBuf> {
-    if let Some(override_env) = override_env {
-        resolve_command_path_with_overrides(&[override_env], candidates)
-    } else {
-        resolve_command_path(candidates)
-    }
-}
-
 fn shell_quote(value: &str) -> String {
     if value
         .chars()
