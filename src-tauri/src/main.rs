@@ -650,22 +650,10 @@ fn resolve_command_path(candidates: &[&str]) -> Option<PathBuf> {
     None
 }
 
-const TELNET_PATH_OVERRIDE_ENVS: &[&str] = &[
-    "TERM_WORKSPACE_TELNET_PATH",
-    "TERMSNIP_TELNET_PATH",
-];
-const SCREEN_PATH_OVERRIDE_ENVS: &[&str] = &[
-    "TERM_WORKSPACE_SCREEN_PATH",
-    "TERMSNIP_SCREEN_PATH",
-];
-const CU_PATH_OVERRIDE_ENVS: &[&str] = &[
-    "TERM_WORKSPACE_CU_PATH",
-    "TERMSNIP_CU_PATH",
-];
-const MOSH_PATH_OVERRIDE_ENVS: &[&str] = &[
-    "TERM_WORKSPACE_MOSH_PATH",
-    "TERMSNIP_MOSH_PATH",
-];
+const TELNET_PATH_OVERRIDE_ENVS: &[&str] = &["TERM_WORKSPACE_TELNET_PATH", "TERMSNIP_TELNET_PATH"];
+const SCREEN_PATH_OVERRIDE_ENVS: &[&str] = &["TERM_WORKSPACE_SCREEN_PATH", "TERMSNIP_SCREEN_PATH"];
+const CU_PATH_OVERRIDE_ENVS: &[&str] = &["TERM_WORKSPACE_CU_PATH", "TERMSNIP_CU_PATH"];
+const MOSH_PATH_OVERRIDE_ENVS: &[&str] = &["TERM_WORKSPACE_MOSH_PATH", "TERMSNIP_MOSH_PATH"];
 
 fn resolve_command_path_with_overrides(
     override_envs: &[&str],
@@ -7384,7 +7372,8 @@ lrwxr-xr-x    1 ops ops  11 Mar 31 12:00 current -> releases
     #[test]
     fn public_known_host_scan_smoke() {
         let Ok(hostname) = env::var("TERM_WORKSPACE_PUBLIC_SCAN_HOST")
-            .or_else(|_| env::var("TERMSNIP_PUBLIC_SCAN_HOST")) else {
+            .or_else(|_| env::var("TERMSNIP_PUBLIC_SCAN_HOST"))
+        else {
             log::warn!("Skipping public known-host scan smoke; TERM_WORKSPACE_PUBLIC_SCAN_HOST / TERMSNIP_PUBLIC_SCAN_HOST is unset");
             return;
         };
