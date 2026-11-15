@@ -1488,11 +1488,48 @@ pub(crate) fn drain_exited_process_output(
     captured.push_str(&decoder.finish());
 }
 
+/// How long one sftp command may take before the batch gives up. Listing,
+/// mkdir, rename and delete keep the control timeout. A transfer gets the
+/// budgets the browser runtime uses (backend-deadline.mjs): 222 s for an
+/// upload (about 48 MiB at a pessimistic 256 KiB/s, the browser runtime's
+/// request cap; the native path has no such cap, so a larger upload over a
+/// slow link can still time out) and a 30-minute ceiling for a download,
+/// whose size is not known up front. The browser runtime also stops a
+/// download after 30 s with no data; the native path cannot see progress, so
+/// it has only the ceiling, and a server that stays connected but stops
+/// sending holds a download for up to 30 minutes (keep-alives still end a
+/// dead connection in about 45 s). With `-q` sftp prints nothing while a transfer runs,
+/// so there is no progress to measure; the fixed 15 s used to cut off any
+/// transfer that took longer and leave a partial remote file.
+pub(crate) fn sftp_command_timeout(command: &str) -> Duration {
+    match command.split_whitespace().next().unwrap_or("") {
+        "put" => Duration::from_millis(222_000),
+        "get" => Duration::from_millis(1_800_000),
+        _ => Duration::from_millis(NATIVE_SSH_CONTROL_READY_TIMEOUT_MS),
+    }
+}
+
+/// What the user reads when an sftp step runs out of time: a transfer names
+/// itself and its limit, rather than the generic prompt wait.
+pub(crate) fn sftp_timeout_message(command: &str, timeout: Duration) -> String {
+    let limit = if timeout.as_secs() >= 120 {
+        format!("{} minutes", timeout.as_secs().div_ceil(60))
+    } else {
+        format!("{} seconds", timeout.as_secs())
+    };
+    match command.split_whitespace().next().unwrap_or("") {
+        "put" => format!("The upload did not finish within {limit}, so it was stopped."),
+        "get" => format!("The download did not finish within {limit}, so it was stopped."),
+        _ => "Timed out while waiting for the sftp prompt".to_string(),
+    }
+}
+
 pub(crate) fn wait_for_sftp_prompt(
     child: &mut Box<dyn Child + Send + Sync>,
     output_receiver: &std::sync::mpsc::Receiver<JumpSessionEvent>,
     pending_command: &str,
 ) -> Result<String, String> {
+    let timeout = sftp_command_timeout(pending_command);
     let started_at = Instant::now();
     let mut captured_output = String::new();
     // #194: the reader now sends raw bytes, so this capture decodes through one
@@ -1556,17 +1593,16 @@ pub(crate) fn wait_for_sftp_prompt(
             Err(error) => return Err(error.to_string()),
         }
 
-        if started_at.elapsed() > Duration::from_millis(NATIVE_SSH_CONTROL_READY_TIMEOUT_MS) {
+        if started_at.elapsed() > timeout {
             let message = trim_ssh_output(&captured_output);
             return Err(if message.is_empty() {
-                "Timed out while waiting for the sftp prompt".to_string()
+                sftp_timeout_message(pending_command, timeout)
             } else {
                 message
             });
         }
 
-        let remaining = Duration::from_millis(NATIVE_SSH_CONTROL_READY_TIMEOUT_MS)
-            .saturating_sub(started_at.elapsed());
+        let remaining = timeout.saturating_sub(started_at.elapsed());
         match output_receiver.recv_timeout(remaining) {
             Ok(JumpSessionEvent::Output(output)) => {
                 captured_output.push_str(&decoder.decode(&output));
@@ -2287,6 +2323,32 @@ pub(crate) fn execute_native_snippet_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sftp_timeout_message_names_the_transfer_and_its_limit() {
+        assert_eq!(
+            sftp_timeout_message("put /l /r", Duration::from_secs(222)),
+            "The upload did not finish within 4 minutes, so it was stopped."
+        );
+        assert_eq!(
+            sftp_timeout_message("get /r /l", Duration::from_secs(1800)),
+            "The download did not finish within 30 minutes, so it was stopped."
+        );
+        assert_eq!(
+            sftp_timeout_message("ls -la /d", Duration::from_secs(15)),
+            "Timed out while waiting for the sftp prompt"
+        );
+    }
+
+    #[test]
+    fn sftp_transfers_get_longer_time_limits_than_other_commands() {
+        let control = Duration::from_millis(NATIVE_SSH_CONTROL_READY_TIMEOUT_MS);
+        assert_eq!(sftp_command_timeout(""), control);
+        assert_eq!(sftp_command_timeout("ls -la /d"), control);
+        assert_eq!(sftp_command_timeout("mkdir /d"), control);
+        assert_eq!(sftp_command_timeout("put /l /r"), Duration::from_secs(222));
+        assert_eq!(sftp_command_timeout("get /r /l"), Duration::from_secs(1800));
+    }
 
     #[test]
     fn drain_after_exit_keeps_the_last_output_and_drops_the_pty_close_error() {
