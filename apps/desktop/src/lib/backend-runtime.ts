@@ -524,6 +524,12 @@ export async function openSessionSocket(sessionId: string): Promise<SessionSocke
   return openBrowserSessionSocket(sessionId);
 }
 
+/**
+ * Check backend status.
+ *
+ * @deprecated Superseded by `probeBackendStatus()` (finding UX-9 / #502), which
+ * uses a POST probe to satisfy the backend auth gate in browser mode.
+ */
 export async function getSessionBackendStatus() {
   if (isTauriRuntime()) {
     return invokeTauriCommand("terminal_workspace_backend_status");
