@@ -1366,12 +1366,13 @@ pub(crate) fn run_sftp_batch_commands(
         .try_clone_reader()
         .map_err(|error| error.to_string())?;
     let master = pair.master;
-    // #193: deliberately UNBOUNDED, unlike the live session loops. This receiver
-    // is reused across prompt waits and stops draining while the next command is
-    // issued, so a bounded queue would stall the reader mid-capture. The capture
-    // accumulates into an unbounded String anyway, so bounding only the channel
-    // would not give this path a memory bound — that needs its own truncation
-    // policy, not a channel size.
+    // Bounded, like the live session loops (#205; this comment used to call
+    // the channel unbounded, which #193 made it and #205 reversed). The
+    // receiver is reused across prompt waits and is not drained while the next
+    // command is issued, so a full queue makes the reader wait, which holds
+    // back the sftp process's output until the next wait drains it; nothing is
+    // lost. The capture still accumulates into an unbounded String, so the
+    // channel size is not this path's memory bound.
     let (output_sender, output_receiver) =
         std::sync::mpsc::sync_channel(NATIVE_SESSION_EVENT_CHANNEL_CAPACITY);
     spawn_jump_session_reader(
@@ -1455,6 +1456,38 @@ pub(crate) fn extract_sftp_prompt_output(output: &str, pending_command: &str) ->
     Some(body)
 }
 
+/// How long a capture keeps reading after its process exited. The PTY normally
+/// drains in milliseconds; the bound covers a process that left a child
+/// holding it open, and an sftp client that handed its terminal to a running
+/// SSH control master (ControlMaster auto), which may close it later. Only a
+/// failed operation pays this wait.
+const EXITED_PROCESS_DRAIN_LIMIT: Duration = Duration::from_millis(500);
+
+/// After the process has exited, collect the output the reader still has, so
+/// an error built from it carries ssh's own reason ("Permission denied ...")
+/// rather than only "exited with status 255". The exit can be seen before the
+/// reader delivers its last output, most often on a busy machine. A read error
+/// at this point is the PTY closing and is not added to the text.
+pub(crate) fn drain_exited_process_output(
+    receiver: &std::sync::mpsc::Receiver<JumpSessionEvent>,
+    decoder: &mut crate::Utf8StreamDecoder,
+    captured: &mut String,
+    limit: Duration,
+) {
+    let deadline = Instant::now() + limit;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match receiver.recv_timeout(remaining) {
+            Ok(JumpSessionEvent::Output(output)) => captured.push_str(&decoder.decode(&output)),
+            Ok(JumpSessionEvent::Eof) | Ok(JumpSessionEvent::Error(_)) | Err(_) => break,
+        }
+    }
+    captured.push_str(&decoder.finish());
+}
+
 pub(crate) fn wait_for_sftp_prompt(
     child: &mut Box<dyn Child + Send + Sync>,
     output_receiver: &std::sync::mpsc::Receiver<JumpSessionEvent>,
@@ -1506,6 +1539,12 @@ pub(crate) fn wait_for_sftp_prompt(
 
         match child.try_wait() {
             Ok(Some(status)) => {
+                drain_exited_process_output(
+                    output_receiver,
+                    &mut decoder,
+                    &mut captured_output,
+                    EXITED_PROCESS_DRAIN_LIMIT,
+                );
                 let message = trim_ssh_output(&captured_output);
                 return Err(if message.is_empty() {
                     format!("sftp exited with status {status}")
@@ -1656,6 +1695,12 @@ pub(crate) fn open_native_ssh_control_session(
 
             match child.try_wait() {
                 Ok(Some(status)) => {
+                    drain_exited_process_output(
+                        &output_receiver,
+                        &mut decoder,
+                        &mut captured_output,
+                        EXITED_PROCESS_DRAIN_LIMIT,
+                    );
                     let message = trim_ssh_output(&captured_output);
                     return Err(if message.is_empty() {
                         format!("SSH control session exited with status {status}")
@@ -2242,6 +2287,47 @@ pub(crate) fn execute_native_snippet_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drain_after_exit_keeps_the_last_output_and_drops_the_pty_close_error() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(JumpSessionEvent::Output(
+                b"ops@db: Permission denied ".to_vec(),
+            ))
+            .unwrap();
+        sender
+            .send(JumpSessionEvent::Output(b"(publickey).\r\n".to_vec()))
+            .unwrap();
+        sender
+            .send(JumpSessionEvent::Error("Input/output error".to_string()))
+            .unwrap();
+        let mut decoder = crate::Utf8StreamDecoder::default();
+        let mut captured = String::new();
+        drain_exited_process_output(
+            &receiver,
+            &mut decoder,
+            &mut captured,
+            Duration::from_secs(5),
+        );
+        assert_eq!(captured, "ops@db: Permission denied (publickey).\r\n");
+    }
+
+    #[test]
+    fn drain_after_exit_is_bounded_when_the_reader_never_ends() {
+        let (_sender, receiver) = std::sync::mpsc::channel::<JumpSessionEvent>();
+        let mut decoder = crate::Utf8StreamDecoder::default();
+        let mut captured = String::new();
+        let started = Instant::now();
+        drain_exited_process_output(
+            &receiver,
+            &mut decoder,
+            &mut captured,
+            Duration::from_millis(100),
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(captured.is_empty());
+    }
     #[cfg(unix)]
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::{
