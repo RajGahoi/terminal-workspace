@@ -1,0 +1,1 @@
+- [FIX] In the file browser, completing a slow upload, mkdir, rename or delete now reloads only if the user is still in that folder, rather than sending them back to the folder they left (#603)

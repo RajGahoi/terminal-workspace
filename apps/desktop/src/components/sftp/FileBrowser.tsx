@@ -216,6 +216,17 @@ export function FileBrowser({ host }: FileBrowserProps) {
     }
   };
 
+  const reloadIfCurrent = async (actionFolder: string) => {
+    // #603 Defect 5: a slow action (mkdir, rename, upload, delete) must only
+    // reload the directory if the user is still in that folder; otherwise,
+    // calling loadDirectory would overwrite the user's active navigation and
+    // send them back to the folder they left.
+    const latestPath = useTransfersStore.getState().remotePathByHost[host.id] ?? host.sftpRoot ?? "/";
+    if (latestPath === actionFolder) {
+      await loadDirectory(actionFolder);
+    }
+  };
+
   const submitDraftAction = async () => {
     if (!draftAction) {
       return;
@@ -225,6 +236,8 @@ export function FileBrowser({ host }: FileBrowserProps) {
     if (!nextName) {
       return;
     }
+
+    const actionFolder = currentPath;
 
     try {
       const readyForConnection = await ensureRuntimeSecrets(host, "Manage remote files");
@@ -239,12 +252,12 @@ export function FileBrowser({ host }: FileBrowserProps) {
             hostId: host.id,
             hostLabel: host.label,
             name: `mkdir ${nextName}`,
-            remotePath: joinRemotePath(currentPath, nextName),
+            remotePath: joinRemotePath(actionFolder, nextName),
           },
           async () => {
             await createRemoteDirectory(
               buildBackendConnection(host, knownHosts),
-              joinRemotePath(currentPath, nextName)
+              joinRemotePath(actionFolder, nextName)
             );
           }
         );
@@ -269,14 +282,15 @@ export function FileBrowser({ host }: FileBrowserProps) {
       }
 
       setDraftAction(null);
-      await loadDirectory(currentPath);
+      await reloadIfCurrent(actionFolder);
     } catch (error) {
       setErrorMessage(formatBackendFailure(error));
     }
   };
 
   const handleUpload = async (file: File) => {
-    const remotePath = joinRemotePath(currentPath, file.name);
+    const uploadFolder = currentPath;
+    const remotePath = joinRemotePath(uploadFolder, file.name);
 
     try {
       const readyForConnection = await ensureRuntimeSecrets(host, "Upload file");
@@ -297,7 +311,7 @@ export function FileBrowser({ host }: FileBrowserProps) {
           await uploadRemoteFile(buildBackendConnection(host, knownHosts), remotePath, file);
         }
       );
-      await loadDirectory(currentPath);
+      await reloadIfCurrent(uploadFolder);
     } catch (error) {
       setErrorMessage(formatBackendFailure(error));
     }
@@ -346,6 +360,8 @@ export function FileBrowser({ host }: FileBrowserProps) {
       return;
     }
 
+    const deleteFolder = currentPath;
+
     try {
       const readyForConnection = await ensureRuntimeSecrets(host, "Delete remote entry");
       if (!readyForConnection) {
@@ -372,7 +388,7 @@ export function FileBrowser({ host }: FileBrowserProps) {
       if (selectedEntry?.path === deleteTarget.path) {
         setSelectedEntry(undefined);
       }
-      await loadDirectory(currentPath);
+      await reloadIfCurrent(deleteFolder);
     } catch (error) {
       setErrorMessage(formatBackendFailure(error));
     }
