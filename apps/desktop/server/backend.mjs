@@ -65,6 +65,7 @@ import {
 
 import { createSshSessionManager } from "./backend-ssh-session.mjs";
 import { createSftpOperations } from "./backend-sftp-ops.mjs";
+import { validateForwardPayload } from "./backend-forward-validation.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = normalize(join(__dirname, ".."));
 const distRoot = join(appRoot, "dist");
@@ -877,6 +878,7 @@ const routes = new Map([
     async (request, response) => {
       try {
         const body = await readJson(request);
+        validateForwardPayload(body);
         const result =
           body.direction === "remote"
             ? await createRemoteForward(body)

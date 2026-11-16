@@ -4,6 +4,7 @@
 import { channel } from "node:diagnostics_channel";
 
 import { PayloadTooLargeError } from "./backend-buffers.mjs";
+import { InvalidForwardError } from "./backend-forward-validation.mjs";
 import { HostKeyRejectedError } from "./backend-host-keys.mjs";
 import { InvalidHostError } from "./backend-host-validation.mjs";
 import { SshAuthRefusedError } from "./backend-ssh-auth.mjs";
@@ -94,6 +95,10 @@ export function respondError(response, error, status = 500) {
   // the caller supplied — so relaying it tells the caller what was wrong
   // without opening the path #230 closed.
   if (error instanceof InvalidHostError) {
+    message = error.message;
+  }
+
+  if (error instanceof InvalidForwardError) {
     message = error.message;
   }
 

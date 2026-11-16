@@ -2006,12 +2006,12 @@ pub(crate) fn validate_forward_payload(payload: &CreateForwardPayload) -> Result
         return Err("Forward hostnames are required".to_string());
     }
 
-    if payload.local_port == 0 || payload.remote_port == 0 {
-        return Err("Forward ports must be greater than zero".to_string());
-    }
-
     if payload.direction != "local" && payload.direction != "remote" {
         return Err("Unsupported forward direction".to_string());
+    }
+
+    if payload.local_port == 0 || (payload.direction == "local" && payload.remote_port == 0) {
+        return Err("Forward ports must be greater than zero".to_string());
     }
 
     Ok(())
@@ -2450,6 +2450,72 @@ mod tests {
         assert_eq!(sftp_command_timeout("mkdir /d"), control);
         assert_eq!(sftp_command_timeout("put /l /r"), Duration::from_secs(222));
         assert_eq!(sftp_command_timeout("get /r /l"), Duration::from_secs(1800));
+    }
+
+    #[test]
+    fn validate_forward_payload_allows_dynamic_remote_port_only() {
+        let base_local = CreateForwardPayload {
+            direction: "local".to_string(),
+            local_host: "127.0.0.1".to_string(),
+            local_port: 8080,
+            remote_host: "127.0.0.1".to_string(),
+            remote_port: 80,
+            session_id: "session-1".to_string(),
+        };
+        assert!(validate_forward_payload(&base_local).is_ok());
+
+        let mut local_port_zero = base_local.clone();
+        local_port_zero.local_port = 0;
+        assert_eq!(
+            validate_forward_payload(&local_port_zero).unwrap_err(),
+            "Forward ports must be greater than zero"
+        );
+
+        let mut local_remote_zero = base_local.clone();
+        local_remote_zero.remote_port = 0;
+        assert_eq!(
+            validate_forward_payload(&local_remote_zero).unwrap_err(),
+            "Forward ports must be greater than zero"
+        );
+
+        let base_remote = CreateForwardPayload {
+            direction: "remote".to_string(),
+            local_host: "127.0.0.1".to_string(),
+            local_port: 8080,
+            remote_host: "127.0.0.1".to_string(),
+            remote_port: 0,
+            session_id: "session-1".to_string(),
+        };
+        // Port 0 is permitted for remote forwards to request dynamic allocation
+        assert!(validate_forward_payload(&base_remote).is_ok());
+
+        let mut remote_local_zero = base_remote.clone();
+        remote_local_zero.local_port = 0;
+        assert_eq!(
+            validate_forward_payload(&remote_local_zero).unwrap_err(),
+            "Forward ports must be greater than zero"
+        );
+
+        let mut missing_session = base_local.clone();
+        missing_session.session_id = "   ".to_string();
+        assert_eq!(
+            validate_forward_payload(&missing_session).unwrap_err(),
+            "Forward is missing a session id"
+        );
+
+        let mut missing_host = base_local.clone();
+        missing_host.local_host = "".to_string();
+        assert_eq!(
+            validate_forward_payload(&missing_host).unwrap_err(),
+            "Forward hostnames are required"
+        );
+
+        let mut invalid_direction = base_local.clone();
+        invalid_direction.direction = "dynamic".to_string();
+        assert_eq!(
+            validate_forward_payload(&invalid_direction).unwrap_err(),
+            "Unsupported forward direction"
+        );
     }
 
     #[test]

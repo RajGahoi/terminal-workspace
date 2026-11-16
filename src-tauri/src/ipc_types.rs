@@ -274,7 +274,7 @@ pub struct SftpUploadRequest {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateForwardPayload {
     pub direction: String,
