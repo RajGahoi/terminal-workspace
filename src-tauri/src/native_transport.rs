@@ -1242,6 +1242,31 @@ pub(crate) fn parse_sftp_modified_at(month: &str, day: &str, time_or_year: &str)
     )
 }
 
+fn extract_sftp_entry_name(line: &str) -> Option<&str> {
+    let mut count = 0;
+    let mut in_token = false;
+    let mut offset = 0;
+    for (i, c) in line.char_indices() {
+        if c.is_whitespace() {
+            if in_token {
+                in_token = false;
+                count += 1;
+                if count == 8 {
+                    offset = i;
+                    break;
+                }
+            }
+        } else {
+            in_token = true;
+        }
+    }
+    if count == 8 {
+        Some(line[offset..].trim_start())
+    } else {
+        None
+    }
+}
+
 pub(crate) fn parse_sftp_directory_listing(
     target_path: &str,
     output: &str,
@@ -1263,11 +1288,11 @@ pub(crate) fn parse_sftp_directory_listing(
             }
 
             let mode = parts[0];
-            let raw_name = parts[8..].join(" ");
+            let raw_name = extract_sftp_entry_name(trimmed).unwrap_or(parts[8]);
             let raw_name = raw_name
                 .split(" -> ")
                 .next()
-                .unwrap_or(&raw_name)
+                .unwrap_or(raw_name)
                 .to_string();
             let name = raw_name.rsplit('/').next().unwrap_or(&raw_name).to_string();
             if name == "." || name == ".." {

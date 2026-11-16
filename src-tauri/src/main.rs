@@ -7364,11 +7364,12 @@ Connected to target.internal.
 drwxr-xr-x    2 ops ops 4096 Apr  2 18:10 apps
 -rw-r--r--    1 ops ops 128 Apr  1 2026 README.md
 lrwxr-xr-x    1 ops ops  11 Mar 31 12:00 current -> releases
+-rw-r--r--    1 ops ops 256 Apr  1 2026 my  archive  file.tar.gz
 "#;
 
         let entries = parse_sftp_directory_listing("/srv", output);
 
-        assert_eq!(entries.len(), 3);
+        assert_eq!(entries.len(), 4);
         assert_eq!(entries[0].name, "apps");
         assert_eq!(entries[0].kind, "directory");
         assert_eq!(entries[0].path, "/srv/apps");
@@ -7376,8 +7377,11 @@ lrwxr-xr-x    1 ops ops  11 Mar 31 12:00 current -> releases
         assert_eq!(entries[1].name, "current");
         assert_eq!(entries[1].kind, "file");
         assert_eq!(entries[1].path, "/srv/current");
-        assert_eq!(entries[2].name, "README.md");
-        assert_eq!(entries[2].permissions.as_deref(), Some("644"));
+        assert_eq!(entries[2].name, "my  archive  file.tar.gz");
+        assert_eq!(entries[2].kind, "file");
+        assert_eq!(entries[2].path, "/srv/my  archive  file.tar.gz");
+        assert_eq!(entries[3].name, "README.md");
+        assert_eq!(entries[3].permissions.as_deref(), Some("644"));
     }
 
     #[test]

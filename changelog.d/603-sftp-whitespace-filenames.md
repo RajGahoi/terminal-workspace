@@ -1,0 +1,1 @@
+- [FIX] Preserve consecutive whitespace in native SFTP file names during directory listing (#603)
