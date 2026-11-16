@@ -1,0 +1,1 @@
+- [FIX] In browser mode, stopping a local port forward or ending its session destroys open client sockets immediately instead of hanging until the client disconnects (#603)

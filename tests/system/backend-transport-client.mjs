@@ -400,6 +400,40 @@ async function main() {
       }
     }
 
+    console.log("[client] local forward stopped while connection is open");
+    // #603 Defect 1: stopping a local forward while a client connection is open
+    // must not hang on server.close(); it must destroy accepted sockets and delete
+    // the forward record immediately.
+    const localForward = await api("/api/backend/forwards", {
+      method: "POST",
+      token: TOKEN,
+      body: {
+        direction: "local",
+        sessionId,
+        localHost: "127.0.0.1",
+        localPort: 0,
+        remoteHost: "127.0.0.1",
+        remotePort: 22,
+      },
+    });
+    check("local forward was created", localForward.status === 200 && localForward.json?.localPort > 0);
+    if (localForward.json?.id && localForward.json?.localPort) {
+      const activeSocket = net.connect(localForward.json.localPort, "127.0.0.1");
+      await new Promise((resolve) => {
+        activeSocket.once("connect", resolve);
+        activeSocket.once("error", resolve);
+      });
+      const stopStart = Date.now();
+      const stopped = await api(`/api/backend/forwards/${localForward.json.id}`, {
+        method: "DELETE",
+        token: TOKEN,
+      });
+      const stopElapsed = Date.now() - stopStart;
+      check("stopping local forward completes without hanging on open connection",
+        stopped.status === 200 && stopElapsed < 5000);
+      activeSocket.destroy();
+    }
+
     console.log("[client] exec endpoint");
     // A different code path from the interactive shell: this is ssh2's
     // client.exec(), which the WS session never touches.

@@ -56,7 +56,9 @@ describe("backend lifecycle", () => {
       ],
     ]);
     const forwardClose = vi.fn();
-    const forwards = new Map([["f1", { server: { close: forwardClose } }]]);
+    const socketDestroy = vi.fn();
+    const sockets = new Set([{ destroy: socketDestroy }]);
+    const forwards = new Map([["f1", { server: { close: forwardClose }, sockets }]]);
     const serverClose = vi.fn();
     const wsServerClose = vi.fn();
 
@@ -72,6 +74,8 @@ describe("backend lifecycle", () => {
     expect(jumpEnd).toHaveBeenCalled();
     expect(wsClose).toHaveBeenCalled();
     expect(streamClose).toHaveBeenCalled();
+    expect(socketDestroy).toHaveBeenCalled();
+    expect(sockets.size).toBe(0);
     expect(forwardClose).toHaveBeenCalled();
     expect(serverClose).toHaveBeenCalled();
     expect(wsServerClose).toHaveBeenCalled();

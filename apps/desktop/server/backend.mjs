@@ -298,22 +298,18 @@ async function closeLocalForward(forwardId) {
     return false;
   }
 
-  if (forward.direction === "local") {
-    await new Promise((resolve, reject) => {
-      forward.server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
+  try {
+    if (forward.direction === "local") {
+      // Destroy accepted sockets so server.close() does not hang waiting
+      // for open client connections to terminate (#603 Defect 1).
+      if (forward.sockets) {
+        for (const socket of forward.sockets) {
+          socket.destroy();
         }
-
-        resolve();
-      });
-    });
-  } else {
-    const session = sessions.get(forward.sessionId);
-    if (session) {
+        forward.sockets.clear();
+      }
       await new Promise((resolve, reject) => {
-        session.client.unforwardIn(forward.remoteHost, forward.remotePort, (error) => {
+        forward.server.close((error) => {
           if (error) {
             reject(error);
             return;
@@ -322,10 +318,25 @@ async function closeLocalForward(forwardId) {
           resolve();
         });
       });
+    } else {
+      const session = sessions.get(forward.sessionId);
+      if (session) {
+        await new Promise((resolve, reject) => {
+          session.client.unforwardIn(forward.remoteHost, forward.remotePort, (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      }
     }
+  } finally {
+    forwards.delete(forwardId);
   }
 
-  forwards.delete(forwardId);
   return true;
 }
 
@@ -345,7 +356,13 @@ async function createLocalForward({ localHost, localPort, remoteHost, remotePort
     throw new Error("Session not found");
   }
 
+  const sockets = new Set();
   const server = createNetServer((socket) => {
+    sockets.add(socket);
+    socket.once("close", () => {
+      sockets.delete(socket);
+    });
+
     session.client.forwardOut(
       socket.remoteAddress ?? "127.0.0.1",
       socket.remotePort ?? 0,
@@ -385,6 +402,7 @@ async function createLocalForward({ localHost, localPort, remoteHost, remotePort
     remotePort,
     createdAt: new Date().toISOString(),
     server,
+    sockets,
   };
 
   forwards.set(forward.id, forward);

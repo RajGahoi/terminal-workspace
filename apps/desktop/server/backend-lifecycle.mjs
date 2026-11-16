@@ -40,6 +40,12 @@ export function shutdownBackend({ server, websocketServer, sessions, forwards, s
 
   if (forwards) {
     for (const forward of forwards.values()) {
+      if (forward.sockets) {
+        for (const socket of forward.sockets) {
+          closeQuietly(() => socket.destroy?.());
+        }
+        forward.sockets.clear();
+      }
       closeQuietly(() => forward.server?.close());
     }
     forwards.clear();

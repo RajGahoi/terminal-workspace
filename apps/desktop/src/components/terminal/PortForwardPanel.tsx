@@ -67,6 +67,15 @@ export function PortForwardPanel({ sessionId, disabled = false }: PortForwardPan
     }
   };
 
+  const handleStopForward = async (id: string) => {
+    try {
+      await deleteLocalForward(id);
+      await loadForwards();
+    } catch (error) {
+      setErrorMessage(errorMessageFromUnknown(error));
+    }
+  };
+
   return (
     <div className="mt-3 rounded-[16px] border border-slate-800 bg-slate-900/60 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -163,7 +172,7 @@ export function PortForwardPanel({ sessionId, disabled = false }: PortForwardPan
               </span>
               <button
                 type="button"
-                onClick={() => void deleteLocalForward(forward.id).then(loadForwards)}
+                onClick={() => void handleStopForward(forward.id)}
                 className="rounded-lg border border-rose-500/40 px-3 py-1 text-xs text-rose-200 transition hover:border-rose-400 hover:text-white"
               >
                 Stop
